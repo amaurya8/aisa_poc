@@ -1,19 +1,17 @@
 package com.aisa.poc;
 
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.List;
+import java.lang.reflect.*;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.*;
 
 public class ObjectComparator {
 
-    /**
-     * Compares two objects of the same type and returns a list of differences.
-     * Each difference is represented as a String describing the field name and its values.
-     */
     public static List<String> compareObjects(Object obj1, Object obj2) throws IllegalAccessException {
         List<String> differences = new ArrayList<>();
 
-        // Basic null and type checks.
         if (obj1 == null && obj2 == null) {
             return differences;
         }
@@ -22,51 +20,137 @@ public class ObjectComparator {
             return differences;
         }
         if (!obj1.getClass().equals(obj2.getClass())) {
-            differences.add("Objects are of different types: " +
-                    obj1.getClass().getName() + " vs " + obj2.getClass().getName());
+            differences.add("Objects are of different types: " + obj1.getClass().getName() + " vs " + obj2.getClass().getName());
             return differences;
         }
 
-        // Iterate through all declared fields.
         Field[] fields = obj1.getClass().getDeclaredFields();
         for (Field field : fields) {
-            field.setAccessible(true); // Allow access to private fields.
+            field.setAccessible(true);
 
             Object value1 = field.get(obj1);
             Object value2 = field.get(obj2);
 
-            // Handle both null values.
-            if (value1 == null && value2 == null) {
-                continue;
-            }
-
-            // If one is null or they don't equal each other.
-            if ((value1 == null && value2 != null) || (value1 != null && !value1.equals(value2))) {
-                differences.add("Field '" + field.getName() + "' differs: " +
-                        value1 + " vs " + value2);
+            if (value1 == null && value2 == null) continue;
+            if (value1 == null || value2 == null || !areValuesEqual(value1, value2)) {
+                differences.add("Field '" + field.getName() + "' of object1 differs: " + value1 +
+                        " vs field '" + field.getName() + "' of object2: " + value2);
             }
         }
         return differences;
     }
 
-    // Example usage.
-    public static void main(String[] args) throws IllegalAccessException {
-        // Example class.
-        class Person {
-            String name;
-            int age;
-            Person(String name, int age) { this.name = name; this.age = age; }
+    private static boolean areValuesEqual(Object value1, Object value2) throws IllegalAccessException {
+        if (value1 == null || value2 == null) return value1 == value2;
+
+        // Handle Arrays
+        if (value1.getClass().isArray() && value2.getClass().isArray()) {
+            return areArraysEqual(value1, value2);
         }
 
-        Person person1 = new Person("Alice", 30);
-        Person person2 = new Person("Alice", 35);
+        // Handle Enums
+        if (value1 instanceof Enum && value2 instanceof Enum) {
+            return value1.equals(value2);
+        }
 
-        List<String> diffs = compareObjects(person1, person2);
-        if (diffs.isEmpty()) {
+        // Handle Collections (Lists, Sets)
+        if (value1 instanceof Collection && value2 instanceof Collection) {
+            return areCollectionsEqual((Collection<?>) value1, (Collection<?>) value2);
+        }
+
+        // Handle Maps
+        if (value1 instanceof Map && value2 instanceof Map) {
+            return areMapsEqual((Map<?, ?>) value1, (Map<?, ?>) value2);
+        }
+
+        // Handle Wrapper Types, LocalDate, LocalDateTime, BigInteger, BigDecimal
+        if (isSupportedNonPrimitive(value1.getClass())) {
+            return value1.equals(value2);
+        }
+
+        // Handle Nested Objects Recursively
+        if (!value1.getClass().isPrimitive() && !value1.getClass().getName().startsWith("java.")) {
+            return compareObjects(value1, value2).isEmpty();
+        }
+
+        return value1.equals(value2);
+    }
+
+    private static boolean areArraysEqual(Object array1, Object array2) {
+        int length1 = Array.getLength(array1);
+        int length2 = Array.getLength(array2);
+        if (length1 != length2) return false;
+
+        for (int i = 0; i < length1; i++) {
+            Object element1 = Array.get(array1, i);
+            Object element2 = Array.get(array2, i);
+            if (!Objects.equals(element1, element2)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean areCollectionsEqual(Collection<?> col1, Collection<?> col2) {
+        return col1.size() == col2.size() && col1.containsAll(col2);
+    }
+
+    private static boolean areMapsEqual(Map<?, ?> map1, Map<?, ?> map2) {
+        return map1.equals(map2);
+    }
+
+    private static boolean isSupportedNonPrimitive(Class<?> clazz) {
+        return clazz == Boolean.class || clazz == Integer.class || clazz == Float.class || clazz == Double.class ||
+                clazz == Long.class || clazz == Short.class || clazz == Byte.class || clazz == Character.class ||
+                clazz == BigDecimal.class || clazz == BigInteger.class ||
+                clazz == UUID.class || clazz == LocalDate.class || clazz == LocalDateTime.class;
+    }
+
+    public static void main(String[] args) throws IllegalAccessException {
+        enum Status { ACTIVE, INACTIVE }
+
+        class Sample {
+            int id;
+            Boolean active;
+            double balance;
+            BigDecimal tax;
+            LocalDate date;
+            LocalDateTime timestamp;
+            int[] numbers;
+            Status status;
+            List<String> logs;
+            Map<String, Integer> metadata;
+
+            Sample(int id, Boolean active, double balance, BigDecimal tax, LocalDate date, LocalDateTime timestamp,
+                   int[] numbers, Status status, List<String> logs, Map<String, Integer> metadata) {
+                this.id = id;
+                this.active = active;
+                this.balance = balance;
+                this.tax = tax;
+                this.date = date;
+                this.timestamp = timestamp;
+                this.numbers = numbers;
+                this.status = status;
+                this.logs = logs;
+                this.metadata = metadata;
+            }
+        }
+
+
+        Sample obj1 = new Sample(1, true, 1000.50, new BigDecimal("15.75"),
+                LocalDate.of(2023, 1, 15), LocalDateTime.of(2023, 1, 15, 10, 30),
+                new int[]{1, 2, 3}, Status.ACTIVE, List.of("log1", "log2"), Map.of("key1", 100));
+
+        Sample obj2 = new Sample(1, false, 1000.50, new BigDecimal("16.00"),
+                LocalDate.of(2023, 1, 16), LocalDateTime.of(2023, 1, 15, 11, 30),
+                new int[]{1, 2, 4}, Status.INACTIVE, List.of("log1", "log3"), Map.of("key1", 200));
+
+        List<String> differences = compareObjects(obj1, obj2);
+        if (differences.isEmpty()) {
             System.out.println("Objects are equal.");
         } else {
             System.out.println("Differences found:");
-            diffs.forEach(System.out::println);
+            differences.forEach(System.out::println);
         }
     }
 }
